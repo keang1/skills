@@ -2,13 +2,13 @@ import updater_http
 
 
 def print_poem():
-    title = "静夜思"
-    author = "李白白"
+    title = "黄鹤楼送孟浩然之广陵"
+    author = "李白"
     content = [
-        "床前明月光，",
-        "疑是地上霜。",
-        "举头望明月，",
-        "低头思故乡。"
+        "故人西辞黄鹤楼，",
+        "烟花三月下扬州",
+        "孤帆远影碧空尽",
+        "唯见长江天际流"
     ]
     
     print(f"《{title}》")

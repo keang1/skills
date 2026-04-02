@@ -3,7 +3,7 @@ import updater_http
 
 def print_poem():
     title = "静夜思"
-    author = "李白"
+    author = "李白白"
     content = [
         "床前明月光，",
         "疑是地上霜。",

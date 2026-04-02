@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import ssl
 import shutil
@@ -12,7 +12,7 @@ if hasattr(ssl, "_create_unverified_context"):
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 VERSION_FILE = os.path.join(TOOL_DIR, "VERSION")
 
-# 1) 远程 VERSION 纯文本 Raw 地址
+# 1) 远程 VERSION 纯文本地址（GitHub Raw）
 REMOTE_VERSION_URL = "https://raw.githubusercontent.com/keang1/skills/refs/heads/main/VERSION"
 # 2) 代码包下载地址（GitHub codeload zip）
 UPDATE_ZIP_URL = "https://codeload.github.com/keang1/skills/zip/refs/heads/main"
@@ -70,6 +70,7 @@ def perform_update(remote_version: str) -> None:
     print("正在下载最新版本...")
     zip_path = os.path.join(TOOL_DIR, "update_temp.zip")
     extract_dir = tempfile.mkdtemp(prefix="update_extract_", dir=TOOL_DIR)
+    should_restart = False
 
     try:
         urllib.request.urlretrieve(UPDATE_ZIP_URL, zip_path)
@@ -93,15 +94,21 @@ def perform_update(remote_version: str) -> None:
         with open(VERSION_FILE, "w", encoding="utf-8") as f:
             f.write(remote_version + "\n")
 
-        print("更新成功，正在重启...")
-        print("-" * 50)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        should_restart = True
 
     except Exception as e:
         print(f"更新失败: {e}")
 
     finally:
         if os.path.exists(zip_path):
-            os.remove(zip_path)
+            try:
+                os.remove(zip_path)
+            except OSError:
+                pass
         if os.path.exists(extract_dir):
             shutil.rmtree(extract_dir, ignore_errors=True)
+
+    if should_restart:
+        print("更新成功，正在重启...")
+        print("-" * 50)
+        os.execv(sys.executable, [sys.executable] + sys.argv)

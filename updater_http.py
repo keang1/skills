@@ -1,82 +1,107 @@
 import os
 import sys
-import urllib.request
-import urllib.error
-import zipfile
-import shutil
 import ssl
+import shutil
+import zipfile
+import tempfile
+import urllib.request
 
-if hasattr(ssl, '_create_unverified_context'):
+if hasattr(ssl, "_create_unverified_context"):
     ssl._create_default_https_context = ssl._create_unverified_context
 
-# 工具根目录
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
-VERSION_FILE = os.path.join(TOOL_DIR, 'VERSION')
+VERSION_FILE = os.path.join(TOOL_DIR, "VERSION")
 
-# 配置：替换为你自己仓库的真实链接
-# 1. 远程 VERSION 文件的纯文本链接 (Raw URL)
-REMOTE_VERSION_URL = "https://172.28.17.127/new/95claw_group/skill/test_skills/-/raw/main/VERSION"
-# 2. 工具最新代码包的下载链接 (比如 GitLab/GitHub 提供的目录下载或 release zip)
-UPDATE_ZIP_URL = "https://172.28.17.127/new/95claw_group/skill/test_skills/-/archive/main/test_skills-main.zip"
+# 1) 远程 VERSION 纯文本 Raw 地址
+REMOTE_VERSION_URL = "https://raw.githubusercontent.com/keang1/skills/refs/heads/main/VERSION"
+# 2) 代码包下载地址（GitHub codeload zip）
+UPDATE_ZIP_URL = "https://codeload.github.com/keang1/skills/zip/refs/heads/main"
 
-def get_local_version():
-    """获取本地版本号"""
+
+def get_local_version() -> str:
+    """读取本地版本号。"""
     if os.path.exists(VERSION_FILE):
-        with open(VERSION_FILE, 'r') as f:
+        with open(VERSION_FILE, "r", encoding="utf-8") as f:
             return f.read().strip()
     return "0.0.0"
 
-def check_and_update():
-    print("🔍 正在检查更新...", end="\r")
+
+def check_and_update() -> None:
+    print("正在检查更新...", end="\r")
     local_version = get_local_version()
-    
+
     try:
-        # 设置3秒超时，避免没网时卡住工具
         req = urllib.request.Request(REMOTE_VERSION_URL)
         with urllib.request.urlopen(req, timeout=3) as response:
-            remote_version = response.read().decode('utf-8').strip()
-            
-        print(" " * 30, end="\r") # 清除检查提示
-        
-        # 简单比对版本号字符串
-        if remote_version != local_version and remote_version != "":
-            print(f"\033[33m🌟 发现新版本: {remote_version} (当前: {local_version})\033[0m")
-            ans = input("是否立即自动更新并继续运行？[Y/n]: ").strip().lower()
-            
-            if ans in ('', 'y', 'yes'):
-                perform_update()
-            else:
-                print("跳过更新，继续执行当前旧版本...")
-                
-    except Exception as e:
-        print(f"\033[31m⚠️  更新检查失败: {e}\033[0m")
+            remote_version = response.read().decode("utf-8").strip()
+
         print(" " * 30, end="\r")
 
-def perform_update():
-    """下载 ZIP 并覆盖当前目录"""
-    print("⬇️  正在下载最新版本...")
-    zip_path = os.path.join(TOOL_DIR, "update_temp.zip")
-    
-    try:
-        # 1. 下载更新包
-        urllib.request.urlretrieve(UPDATE_ZIP_URL, zip_path)
-        
-        # 2. 解压并覆盖文件
-        print("📦 正在应用更新...")
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            # 注意：实际使用时，如果 ZIP 里包了一层顶层文件夹，你需要根据情况提取内层文件
-            zip_ref.extractall(TOOL_DIR)
-            
-        # 3. 清理临时压缩包
-        os.remove(zip_path)
-        
-        print("\033[32m✅ 更新成功！正在重新启动...\033[0m")
-        print("-" * 50)
-        
-        # 4. 热重启 Python 脚本
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-        
+        if remote_version and remote_version != local_version:
+            print(f"发现新版本 {remote_version}（当前: {local_version}）")
+            ans = input("是否立即自动更新并继续运行？[Y/n]: ").strip().lower()
+
+            if ans in ("", "y", "yes"):
+                perform_update(remote_version)
+            else:
+                print("跳过更新，继续执行当前版本。")
+
     except Exception as e:
-        print(f"\033[31m❌ 更新失败: {e}\033[0m")
-        
-        
+        print(f"更新检查失败: {e}")
+        print(" " * 30, end="\r")
+
+
+def _copy_project_content(src_root: str, dst_root: str) -> None:
+    """把 src_root 下的内容覆盖到 dst_root。"""
+    for name in os.listdir(src_root):
+        src_path = os.path.join(src_root, name)
+        dst_path = os.path.join(dst_root, name)
+
+        if os.path.isdir(src_path):
+            if os.path.exists(dst_path):
+                shutil.rmtree(dst_path)
+            shutil.copytree(src_path, dst_path)
+        else:
+            shutil.copy2(src_path, dst_path)
+
+
+def perform_update(remote_version: str) -> None:
+    """下载并应用更新，最后写回本地 VERSION。"""
+    print("正在下载最新版本...")
+    zip_path = os.path.join(TOOL_DIR, "update_temp.zip")
+    extract_dir = tempfile.mkdtemp(prefix="update_extract_", dir=TOOL_DIR)
+
+    try:
+        urllib.request.urlretrieve(UPDATE_ZIP_URL, zip_path)
+
+        print("正在应用更新...")
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(extract_dir)
+
+        entries = os.listdir(extract_dir)
+        if not entries:
+            raise RuntimeError("更新包为空，无法应用更新")
+
+        # codeload 压缩包通常为 <repo>-<branch> 顶层目录
+        project_root = os.path.join(extract_dir, entries[0])
+        if not os.path.isdir(project_root):
+            raise RuntimeError("更新包结构异常，未找到项目根目录")
+
+        _copy_project_content(project_root, TOOL_DIR)
+
+        # 明确写回版本号，防止下次仍提示更新
+        with open(VERSION_FILE, "w", encoding="utf-8") as f:
+            f.write(remote_version + "\n")
+
+        print("更新成功，正在重启...")
+        print("-" * 50)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    except Exception as e:
+        print(f"更新失败: {e}")
+
+    finally:
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        if os.path.exists(extract_dir):
+            shutil.rmtree(extract_dir, ignore_errors=True)
